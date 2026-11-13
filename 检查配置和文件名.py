@@ -8,10 +8,12 @@ def main():
     root = Path(__file__).resolve().parent
     config_file = root / "config.json"
     print("本次仅检查本地配置与文件名规则，不访问飞书、不修改任何表格。")
-    config = require_config(config_file)
+    config = require_config(config_file, allow_discovery=True)
     print("\n多维表格 app_token：", config["app_token"])
     for entry in config["tables"]:
         print(f"子表 {entry['name']} -> table_id：{entry['table_id']}")
+    if not config["tables"]:
+        print("未限定子表：启动工具时将通过飞书 API 读取真实子表名称并供选择。")
     print("\n文件名提取示例：")
     for filename in ("C001_候选人姓名.docx", "C062_张三.docx", "C125.docx"):
         print(f"  {filename} -> 候选编号 {filename_code(filename)}（姓名不用于匹配）")

@@ -87,7 +87,7 @@ def clean_table_id(value):
     return table_id
 
 
-def require_config(path):
+def require_config(path, *, allow_discovery=False):
     p = Path(path)
     if not p.exists():
         raise ValueError(f"配置文件不存在：{p}。请复制 config.example.json 为 config.json，并填写真实值。")
@@ -100,6 +100,11 @@ def require_config(path):
         print(f"[配置自动修正] app_token 已提取纯 ID：{token}（建议同步修改 config.json）")
     config["app_token"] = token
     tables = config.get("tables")
+    if allow_discovery and tables is None:
+        tables = []
+        config["tables"] = tables
+    if allow_discovery and isinstance(tables, list) and not tables:
+        return config
     if not isinstance(tables, list) or not tables:
         raise ValueError("config.json 的 tables 必须是非空列表")
     seen = set()
@@ -107,6 +112,9 @@ def require_config(path):
         if not isinstance(t, dict):
             raise ValueError("tables 中每个项目都必须是对象")
         name, original_id = t.get("name", ""), t.get("table_id", "")
+        if allow_discovery and isinstance(name, str) and not name.strip():
+            name = original_id
+            t["name"] = name
         if not isinstance(name, str) or not name.strip():
             raise ValueError("tables 中有未命名子表")
         try:
@@ -120,6 +128,30 @@ def require_config(path):
         seen.add(table_id)
         t["table_id"] = table_id
     return config
+
+
+def resolve_feishu_tables(config, client=None):
+    """读取真实名称；已有配置保留原子表范围、顺序及任意位置的文件夹。"""
+    if client is None:
+        client = FeishuClient(config["app_token"])
+    app = client.get_app()
+    remote_tables = client.list_tables()
+    by_id = {t["table_id"]: t for t in remote_tables}
+    if not by_id:
+        raise ValueError("该多维表格没有可用子表，请检查表格内容和应用访问权限。")
+    configured = config.get("tables") or remote_tables
+    resolved = []
+    for entry in configured:
+        table_id = entry["table_id"]
+        if table_id not in by_id:
+            raise ValueError(f"配置中的子表 {table_id} 不在飞书返回的清单中，请检查 ID 和访问权限。")
+        table = {"name": by_id[table_id]["name"], "table_id": table_id,
+                 "folder": entry.get("folder", "")}
+        # 兼容此前以配置中的显示名生成的报告，不改变目标 ID 校验。
+        if entry.get("name") and entry["name"] != table["name"]:
+            table["configured_name"] = entry["name"]
+        resolved.append(table)
+    return {"app_token": config["app_token"], "app_name": app["name"], "tables": resolved}
 
 
 
@@ -278,6 +310,40 @@ class FeishuClient:
         if result.get("code") != 0:
             raise RuntimeError(f"飞书 API 错误 code={result.get('code')} msg={result.get('msg')} logid={r.headers.get('X-Tt-Logid', '')}")
         return result.get("data") or {}
+
+    def get_app(self):
+        data = self.request("GET", f"/bitable/v1/apps/{self.app_token}")
+        app = data.get("app")
+        if not isinstance(app, dict) or not isinstance(app.get("name"), str) or not app["name"].strip():
+            raise RuntimeError("飞书未返回有效的多维表格名称，请检查应用读取元数据的权限。")
+        return app
+
+    def list_tables(self):
+        tables, seen_ids, seen_pages = [], set(), set()
+        page_token = None
+        while True:
+            params = {"page_size": 100}
+            if page_token:
+                params["page_token"] = page_token
+            data = self.request("GET", f"/bitable/v1/apps/{self.app_token}/tables", params=params)
+            items = data.get("items") or []
+            if not isinstance(items, list):
+                raise RuntimeError("飞书返回的子表清单格式错误，已停止。")
+            for item in items:
+                if not isinstance(item, dict):
+                    raise RuntimeError("飞书返回的子表信息格式错误，已停止。")
+                table_id = clean_table_id(item.get("table_id"))
+                name = item.get("name")
+                if not isinstance(name, str) or not name.strip() or table_id in seen_ids:
+                    raise RuntimeError("飞书返回了空子表名称或重复子表 ID，已停止。")
+                seen_ids.add(table_id)
+                tables.append({"table_id": table_id, "name": name})
+            if not data.get("has_more"):
+                return tables
+            page_token = data.get("page_token")
+            if not isinstance(page_token, str) or not page_token or page_token in seen_pages:
+                raise RuntimeError("飞书子表清单分页返回异常，已停止以避免遗漏子表。")
+            seen_pages.add(page_token)
 
     def base_path(self, table_id):
         safe_table_id = clean_table_id(table_id)

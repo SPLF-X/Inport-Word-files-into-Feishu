@@ -6,11 +6,13 @@ if errorlevel 1 goto bad_directory
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0run_tool.ps1"
 set "result=%ERRORLEVEL%"
 popd
-if not "%result%"=="0" echo [ERROR] Tool launch. Read messages above.
+if not "%result%"=="0" echo 【操作提示】工具未能正常运行，请查看上方提示。
 echo.
-pause
+echo 【需要按键】请按任意键关闭窗口。
+pause >nul
 exit /b %result%
 :bad_directory
-echo [ERROR] Could not enter the tool directory.
-pause
+echo 【操作提示】无法打开工具所在文件夹，请检查文件夹是否可访问。
+echo 【需要按键】请按任意键关闭窗口。
+pause >nul
 exit /b 1

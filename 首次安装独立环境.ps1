@@ -62,14 +62,14 @@ foreach ($key in @('1','2','3','4','5')) {
     Write-Host ('  ' + $key + '. ' + $sourceOptions[$key].Name + '  ' + $sourceOptions[$key].Url)
 }
 Write-Host '  6. 自定义 HTTPS 索引地址'
-$sourceChoice = (Read-Host '请输入编号 1-6，直接回车使用 1（阿里云）').Trim()
+$sourceChoice = (Read-Host '【需要选择】请输入下载源编号 1-6；直接按 Enter 使用 1（阿里云）').Trim()
 if ([string]::IsNullOrWhiteSpace($sourceChoice)) { $sourceChoice = '1' }
 if ($sourceOptions.ContainsKey($sourceChoice)) {
     $mirrorIndex = $sourceOptions[$sourceChoice].Url
     $sourceName = $sourceOptions[$sourceChoice].Name
 }
 elseif ($sourceChoice -eq '6') {
-    $mirrorIndex = (Read-Host '请输入完整 HTTPS PyPI 索引地址（通常以 /simple/ 结尾）').Trim()
+    $mirrorIndex = (Read-Host '【需要输入】请输入下载源的完整 HTTPS 地址（通常以 /simple/ 结尾）').Trim()
     $validUri = $null
     $isValidUrl = [System.Uri]::TryCreate($mirrorIndex, [System.UriKind]::Absolute, [ref]$validUri)
     if ($isValidUrl) {
