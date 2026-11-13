@@ -99,9 +99,7 @@ try {
         Write-Host '【操作说明】正在使用 config.json 中保存的目标多维表格；请在接下来的清单中选择所需子表。'
         $catalogArgs += @('--config', $configPath)
     } else {
-        Write-Host '【操作说明】请打开目标多维表格，复制浏览器地址栏中包含 /base/ 的完整链接。'
-        Write-Host '【链接说明】在同一份多维表格中切换子表时，网址会随之变化；可复制其中任一子表的完整链接。'
-        Write-Host '【操作说明】请完整粘贴链接，无需删除问号后面的内容；所需子表请在下一步另行选择。'
+        Write-Host '【操作说明】请打开目标多维表格，复制浏览器地址栏中包含 /base/ 的完整链接。示例：https://example.feishu.cn/base/abc123?table=tbl001&view=vew001'
         $appTokenInput = ([string](Read-Host '【需要输入】请粘贴多维表格完整链接，或填写 app_token')).Trim()
         if ([string]::IsNullOrWhiteSpace($appTokenInput)) { throw '未填写多维表格链接或 app_token。' }
         $catalogArgs += @('--app-token', $appTokenInput)
