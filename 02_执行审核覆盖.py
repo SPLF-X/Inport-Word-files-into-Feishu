@@ -1,10 +1,10 @@
 ﻿# ================== table_id 获取方法（请先阅读） ==================
 # 1. 在浏览器中打开飞书多维表格。
-# 2. 点击左侧的「T1 mapping」子表。
+# 2. 点击左侧的「子表1（工作簿1）」子表。
 # 3. 查看浏览器地址栏，找到 table= 后面的内容。
 #    例如：https://xxx.feishu.cn/base/xxxxx?table=tblAbc123
-#    则 T1 的 table_id 为：tblAbc123
-# 4. 点击「T2 mapping」子表，按相同方法获取 T2 的 table_id。
+#    则子表1（工作簿1）的 table_id 为：tblAbc123
+# 4. 点击「子表2（工作簿2）」子表，按相同方法获取其 table_id。
 # 5. 将 config.json 中的示例值替换为实际获取的 ID。
 #
 # 注意：
@@ -46,7 +46,7 @@ def read_approvals(report, config, allowed_table_ids=None):
     if headers[:len(COLS)] != COLS:
         raise ValueError("审核表列结构已改变，请勿删除、重排或重命名列")
 
-    table_map = {t["table_id"]: t["name"] for t in config["tables"]}
+    table_map = {t["table_id"]: t for t in config["tables"]}
     approvals, issues = [], []
     seen = set()
     duplicate_keys = set()
@@ -70,7 +70,9 @@ def read_approvals(report, config, allowed_table_ids=None):
         try:
             if not all(isinstance(x, str) and x for x in (name, table_id, record_id, code, field, digest)):
                 raise ValueError("关键定位字段为空或格式错误")
-            if table_id not in table_map or table_map[table_id] != name:
+            if table_id not in table_map or name not in {
+                table_map[table_id]["name"], table_map[table_id].get("configured_name")
+            }:
                 raise ValueError("报告中的目标子表与配置不一致")
             if field not in FIELD_NAMES:
                 raise ValueError("审核字段不是『邮件主题』或『邮件正文』")
@@ -83,7 +85,7 @@ def read_approvals(report, config, allowed_table_ids=None):
             expected = make_digest(config["app_token"], table_id, record_id, code, field, old, new)
             if expected != digest:
                 raise ValueError("报告内容发生修改，校验标识不匹配；请重新生成报告")
-            approvals.append({"excel_row": excel_row, "name": name, "table_id": table_id,
+            approvals.append({"excel_row": excel_row, "name": table_map[table_id]["name"], "table_id": table_id,
                               "record_id": record_id, "code": code, "field": field,
                               "old": old, "new": new, "source": filename})
         except Exception as exc:
@@ -191,6 +193,8 @@ def main():
     parser.add_argument("--table-id", action="append", default=None, help="本次允许审核/覆盖的子表 ID；可多次传入")
     args = parser.parse_args()
     config = require_config(args.config)
+    if config.get("app_name"):
+        print("当前多维表格：" + config["app_name"])
     selected_tables = selected_table_entries(config, args.table_id)
     if not selected_tables:
         print("未选择任何子表：未读取审核报告，未请求飞书，也不会写入。")
@@ -229,7 +233,7 @@ def main():
     print("即将覆盖的子表与字段数（仅包含本次选中范围）：")
     for name, count in counts.items():
         print(f"  {name}：{count} 个字段")
-    answer = input(f"即将覆盖 {len(good)} 个字段。请确认以上目标子表后，输入全部大写 YES（小写 yes 不执行）：").strip()
+    answer = input(f"【写入确认】即将覆盖 {len(good)} 个字段。请核对以上目标子表；若要执行，请输入全部大写 YES，输入其他内容并按 Enter 可取消：").strip()
     if answer != "YES":
         print("未确认，已取消，无写入。")
         return

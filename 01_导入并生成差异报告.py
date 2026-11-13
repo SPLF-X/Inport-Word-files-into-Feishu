@@ -1,10 +1,10 @@
 ﻿# ================== table_id 获取方法（请先阅读） ==================
 # 1. 在浏览器中打开飞书多维表格。
-# 2. 点击左侧的「T1 mapping」子表。
+# 2. 点击左侧的「子表1（工作簿1）」子表。
 # 3. 查看浏览器地址栏，找到 table= 后面的内容。
 #    例如：https://xxx.feishu.cn/base/xxxxx?table=tblAbc123
-#    则 T1 的 table_id 为：tblAbc123
-# 4. 点击「T2 mapping」子表，按相同方法获取 T2 的 table_id。
+#    则子表1（工作簿1）的 table_id 为：tblAbc123
+# 4. 点击「子表2（工作簿2）」子表，按相同方法获取其 table_id。
 # 5. 将 config.json 中的示例值替换为实际获取的 ID。
 #
 # 注意：
@@ -38,10 +38,11 @@ def choose_tables(config, no_dialog):
     for entry in config["tables"]:
         folder = (entry.get("folder") or "").strip()
         if not folder and not no_dialog:
+            print(f"【需要选择】请在弹出的窗口中为『{entry['name']}』选择 Word 文件夹，可选择电脑上的任意位置；取消将跳过该子表。", flush=True)
             if root is None:
                 root = Tk()
                 root.withdraw()
-            folder = filedialog.askdirectory(title=f"选择要导入『{entry['name']}』的 Word 文件夹；取消可跳过")
+            folder = filedialog.askdirectory(title=f"【需要选择】为『{entry['name']}』选择 Word 文件夹；取消可跳过")
         if not folder:
             print(f"跳过子表 {entry['name']}：没有选择文件夹")
             continue
@@ -182,7 +183,7 @@ def save_report(run_id, config, mode, diffs, detail, exceptions, selected_tables
               "飞书现值", "Word新值", "差异类型", "来源文件", "校验标识", "备注"], diffs, review=True)
     add_sheet(wb, "字段处理明细", ["目标子表", "来源文件", "候选编号", "record_id", "字段名", "飞书现值", "Word新值", "处理状态"], detail)
     add_sheet(wb, "异常与跳过", ["目标子表", "来源文件", "候选编号", "错误描述"], exceptions)
-    add_sheet(wb, "使用说明", ["项目", "说明"], [
+    instructions = [
         ["本次运行", run_id],
         ["本次模式", "仅预览" if mode == "preview" else "只填写空白字段（已执行）"],
         ["app_token", config["app_token"]],
@@ -193,7 +194,10 @@ def save_report(run_id, config, mode, diffs, detail, exceptions, selected_tables
         ["保存方法", "Excel 保存为 .xlsx 后，再运行 02 脚本预检和执行。"],
         ["安全说明", "审核期间如有人改动飞书旧值，脚本二会校验失败并拒绝覆盖。"],
         ["数据保护", "报告含候选人邮件内容，存本机受控目录，不要公开分享。"],
-    ])
+    ]
+    if config.get("app_name"):
+        instructions.append(["多维表格名称", config["app_name"]])
+    add_sheet(wb, "使用说明", ["项目", "说明"], instructions)
     wb.save(path)
     return path
 
@@ -206,6 +210,8 @@ def main():
     p.add_argument("--table-id", action="append", default=None, help="本次操作的子表 ID；可多次传入；未传时按配置处理全部子表")
     args = p.parse_args()
     config = require_config(args.config)
+    if config.get("app_name"):
+        print("当前多维表格：" + config["app_name"])
     target_tables = selected_table_entries(config, args.table_id)
     if not target_tables:
         print("未选择任何子表：不读取 Word、不请求飞书、不生成写入任务。")
@@ -234,7 +240,7 @@ def main():
         print("即将写入的子表与记录数（只填空白）：")
         for name, count in counts.items():
             print(f"  {name}：{count} 条记录")
-        answer = input("请再次确认本次选中的子表；只填空白，不覆盖旧值。输入全部大写 YES 确认（小写 yes 不执行）：").strip()
+        answer = input("【写入确认】请核对以上目标子表。若要填写空白字段，请输入全部大写 YES；输入其他内容并按 Enter 可取消：").strip()
         if answer == "YES":
             # 正式填写空白前，先在本机留下可追溯的处理计划。
             backup_dir = Path("备份")
@@ -253,12 +259,12 @@ def main():
     print(f"\n生成报告：{report.resolve()}")
     print(f"差异待审核：{len(all_diffs)} 项；异常/跳过：{len(all_exceptions)} 项")
     if mode == "preview":
-        print("本次未修改飞书。确认预览无误后重新运行，加 --apply-blanks。")
+        print("预览已完成，未修改飞书。请先核对报告；如需填写空白字段，请返回菜单选择「2. 正式只填空白」。")
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print(f"运行已终止，未保证本轮之前的写入会回滚：{exc}")
+        print(f"处理已停止：{exc}。如已开始写入，请先核对飞书中的结果，再重新操作。")
         raise
